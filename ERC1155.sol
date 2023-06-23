@@ -4,6 +4,7 @@
 pragma solidity ^0.8.0;
 
 import "./IERC1155.sol";
+import "./IERC1155F.sol";
 import "./IERC1155Receiver.sol";
 import "./extensions/IERC1155MetadataURI.sol";
 import "./utils/Address.sol";
@@ -17,8 +18,11 @@ import "./utils/introspection/ERC165.sol";
  *
  * _Available since v3.1._
  */
-contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI {
+contract ERC1155 is Context, ERC165, IERC1155, IERC1155F, IERC1155MetadataURI {
     using Address for address;
+
+    // Mapping from token ID to token fission, zero means never minted
+    mapping(uint256 => uint256) private _fission;
 
     // Mapping from token ID to account balances
     mapping(uint256 => mapping(address => uint256)) private _balances;
@@ -61,6 +65,41 @@ contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI {
     }
 
     /**
+     * get current fission value of id
+     */
+    function fission(uint256 id) public view returns (uint256) {
+        return _fission[id];
+    }
+
+    /**
+     * init fission and Emits a {Fission} event.
+     *
+     * Requirements:
+     *
+     * - id is valid
+     * - current fission value==0, means never minted
+     */
+    function _initFission(uint256 id, uint256 fission_) internal virtual {
+        require(_fission[id] == 0, "ERC1155: fission already init" );
+        _fission[id] = fission_;
+        emit Fission(id, fission_);
+    }
+
+    /**
+     * fission once and Emits a {Fission} event.
+     *
+     * Requirements:
+     *
+     * - id is valid
+     * - current fission value >1, zero means never minted
+     */
+    function _doFission(uint256 id) internal virtual {
+        require(_fission[id] > 1, "ERC1155: fission upto the ceil" );
+        _fission[id] = _fission[id] - 1;
+        emit Fission(id, _fission[id]);
+    }
+
+    /**
      * @dev See {IERC1155-balanceOf}.
      *
      * Requirements:
@@ -69,7 +108,7 @@ contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI {
      */
     function balanceOf(address account, uint256 id) public view virtual override returns (uint256) {
         require(account != address(0), "ERC1155: address zero is not a valid owner");
-        return _balances[id][account];
+        return _balances[id][account]>>_fission[id];
     }
 
     /**
@@ -125,6 +164,7 @@ contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI {
             from == _msgSender() || isApprovedForAll(from, _msgSender()),
             "ERC1155: caller is not token owner or approved"
         );
+        amount = amount << _fission[id];
         _safeTransferFrom(from, to, id, amount, data);
     }
 
@@ -142,6 +182,9 @@ contract ERC1155 is Context, ERC165, IERC1155, IERC1155MetadataURI {
             from == _msgSender() || isApprovedForAll(from, _msgSender()),
             "ERC1155: caller is not token owner or approved"
         );
+        for (uint256 i = 0; i < ids.length; ++i) {
+            amounts[i] = amounts[i] << _fission[ids[i]];
+        }
         _safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 
